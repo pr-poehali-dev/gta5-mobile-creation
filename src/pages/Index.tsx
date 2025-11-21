@@ -1,13 +1,23 @@
-import { useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { Button } from '@/components/ui/button';
+import Icon from '@/components/ui/icon';
 import * as THREE from 'three';
 
+type Screen = 'menu' | 'mode-select' | 'game';
+type GameMode = 'single' | 'multiplayer' | null;
+
 const Index = () => {
+  const [currentScreen, setCurrentScreen] = useState<Screen>('menu');
+  const [gameMode, setGameMode] = useState<GameMode>(null);
   const mountRef = useRef<HTMLDivElement>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
 
   useEffect(() => {
-    if (!mountRef.current) return;
+    if (currentScreen !== 'game' || !mountRef.current) return;
 
     const scene = new THREE.Scene();
+    sceneRef.current = scene;
     scene.background = new THREE.Color(0x87CEEB);
     scene.fog = new THREE.Fog(0x87CEEB, 50, 200);
 
@@ -19,6 +29,7 @@ const Index = () => {
     );
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
+    rendererRef.current = renderer;
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -161,40 +172,39 @@ const Index = () => {
     camera.position.set(0, 5, 10);
     camera.lookAt(0, 1, 0);
 
-    const keys: { [key: string]: boolean } = {};
-    const playerSpeed = 0.15;
+    const keys: Record<string, boolean> = {};
+    const playerSpeed = 0.2;
     let playerRotation = 0;
 
-    window.addEventListener('keydown', (e) => {
+    const handleKeyDown = (e: KeyboardEvent) => {
       keys[e.key.toLowerCase()] = true;
-    });
+      e.preventDefault();
+    };
 
-    window.addEventListener('keyup', (e) => {
+    const handleKeyUp = (e: KeyboardEvent) => {
       keys[e.key.toLowerCase()] = false;
-    });
+      e.preventDefault();
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('keyup', handleKeyUp);
 
     const animate = () => {
       requestAnimationFrame(animate);
 
-      let moved = false;
-
       if (keys['w'] || keys['arrowup']) {
         player.position.z -= playerSpeed * Math.cos(playerRotation);
         player.position.x -= playerSpeed * Math.sin(playerRotation);
-        moved = true;
       }
       if (keys['s'] || keys['arrowdown']) {
         player.position.z += playerSpeed * Math.cos(playerRotation);
         player.position.x += playerSpeed * Math.sin(playerRotation);
-        moved = true;
       }
       if (keys['a'] || keys['arrowleft']) {
         playerRotation += 0.05;
-        moved = true;
       }
       if (keys['d'] || keys['arrowright']) {
         playerRotation -= 0.05;
-        moved = true;
       }
 
       player.rotation.y = playerRotation;
@@ -222,16 +232,121 @@ const Index = () => {
     window.addEventListener('resize', handleResize);
 
     return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('resize', handleResize);
-      window.removeEventListener('keydown', () => {});
-      window.removeEventListener('keyup', () => {});
-      mountRef.current?.removeChild(renderer.domElement);
+      if (mountRef.current && renderer.domElement) {
+        mountRef.current.removeChild(renderer.domElement);
+      }
       renderer.dispose();
     };
-  }, []);
+  }, [currentScreen]);
+
+  const startGame = (mode: GameMode) => {
+    setGameMode(mode);
+    setCurrentScreen('game');
+  };
+
+  const renderMenu = () => (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-background via-background to-card p-6">
+      <div className="text-center mb-16 animate-fade-in">
+        <h1 className="text-7xl font-bold mb-4 bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent drop-shadow-2xl">
+          GTA V
+        </h1>
+        <p className="text-muted-foreground text-xl">Mobile Edition</p>
+      </div>
+
+      <Button
+        size="lg"
+        className="w-full max-w-xs text-2xl h-16 bg-primary hover:bg-primary/90 animate-scale-in shadow-lg shadow-primary/50"
+        onClick={() => setCurrentScreen('mode-select')}
+      >
+        <Icon name="Play" className="mr-3" size={28} />
+        Играть
+      </Button>
+    </div>
+  );
+
+  const renderModeSelect = () => (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-background to-card p-6">
+      <Button
+        variant="ghost"
+        className="absolute top-6 left-6"
+        onClick={() => setCurrentScreen('menu')}
+      >
+        <Icon name="ArrowLeft" className="mr-2" size={20} />
+        Назад
+      </Button>
+
+      <div className="text-center mb-12 animate-fade-in">
+        <h2 className="text-4xl font-bold mb-3">Выбери режим</h2>
+        <p className="text-muted-foreground">Как ты хочешь играть?</p>
+      </div>
+
+      <div className="flex flex-col gap-4 w-full max-w-md">
+        <Button
+          size="lg"
+          className="w-full text-xl h-20 bg-secondary hover:bg-secondary/90 animate-scale-in flex-col gap-1"
+          onClick={() => startGame('multiplayer')}
+        >
+          <Icon name="Users" size={32} />
+          <span>Мультиплеер</span>
+          <span className="text-xs opacity-80">Играй с друзьями онлайн</span>
+        </Button>
+
+        <Button
+          size="lg"
+          variant="outline"
+          className="w-full text-xl h-20 animate-scale-in flex-col gap-1"
+          style={{ animationDelay: '0.1s' }}
+          onClick={() => startGame('single')}
+        >
+          <Icon name="User" size={32} />
+          <span>Одиночная игра</span>
+          <span className="text-xs opacity-80">Исследуй город самостоятельно</span>
+        </Button>
+      </div>
+    </div>
+  );
+
+  const renderGame = () => (
+    <div className="relative w-full h-screen overflow-hidden">
+      <div ref={mountRef} className="w-full h-full" />
+      
+      <div className="absolute top-4 left-4 bg-black/70 backdrop-blur-sm rounded-lg px-4 py-3 text-sm z-10">
+        <div className="flex items-center gap-2 mb-2">
+          <Icon name="Gamepad2" size={16} className="text-primary" />
+          <span className="text-foreground font-medium">
+            {gameMode === 'multiplayer' ? 'Мультиплеер' : 'Одиночная игра'}
+          </span>
+        </div>
+        <div className="text-muted-foreground text-xs space-y-1">
+          <div>W/↑ - Вперед</div>
+          <div>S/↓ - Назад</div>
+          <div>A/← - Поворот влево</div>
+          <div>D/→ - Поворот вправо</div>
+        </div>
+      </div>
+
+      <Button
+        variant="ghost"
+        size="sm"
+        className="absolute top-4 right-4 bg-black/70 backdrop-blur-sm z-10 hover:bg-black/80"
+        onClick={() => {
+          setCurrentScreen('menu');
+        }}
+      >
+        <Icon name="X" size={20} />
+      </Button>
+    </div>
+  );
 
   return (
-    <div ref={mountRef} className="w-full h-screen overflow-hidden" />
+    <div className="min-h-screen font-sans">
+      {currentScreen === 'menu' && renderMenu()}
+      {currentScreen === 'mode-select' && renderModeSelect()}
+      {currentScreen === 'game' && renderGame()}
+    </div>
   );
 };
 
